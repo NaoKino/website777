@@ -7,7 +7,7 @@ description: ""
 draft: false
 image: pic10.jpg
 keywords: ""
-slug: Two years holiday
+slug: ipsum
 title: Great MBA life
 ---
 

@@ -7,6 +7,6 @@ description: Indulge in the vibrant cultures, breathtaking landscapes, and unfor
 draft: false
 image: pic08.jpg
 keywords: ""
-slug: Great view in Franc (will adding more photo)
+slug: ipsum
 title: Experience in Europe
 ---

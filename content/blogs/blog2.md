@@ -7,7 +7,7 @@ description: Lorem Etiam Nullam
 draft: false
 image: pic09.jpg
 keywords: ""
-slug: Hectic days in Tokyo
+slug: ipsum
 title: Life in Tokyo
 ---
 
