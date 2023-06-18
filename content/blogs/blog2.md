@@ -7,7 +7,7 @@ description: Lorem Etiam Nullam
 draft: false
 image: pic09.jpg
 keywords: ""
-slug: ipsum
+slug: magna
 title: Life in Tokyo
 ---
 
