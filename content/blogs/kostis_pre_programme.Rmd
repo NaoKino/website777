@@ -22,7 +22,7 @@ library(here)
 library(janitor)
 ```
 
-Hi this is Kostis.
+Hi this is Naoya.
 
 # Task 2: `gapminder` country comparison
 
