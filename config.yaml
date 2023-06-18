@@ -81,20 +81,20 @@ params:
     enable: yes
     showcase:
       - image: backround_sunset.jpg
-        subtitle: I love sunsets
+        subtitle: I love coding
         title: About me
         url: blogs/aliquam
       - image: pic02.jpg
-        subtitle: Feugiat Amet Tempus
-        title: Tempus
+        subtitle: Great view in the France
+        title: Experience in Europe
         url: blogs/tempus
       - image: pic03.jpg
-        subtitle: Lorem Etiam Nullam
-        title: Magna
+        subtitle: Hectic days in Tokyo
+        title: Life in Tokyo
         url: blogs/magna
       - image: pic04.jpg
-        subtitle: Nisl Sed Aliquam
-        title: Ipsum
+        subtitle: Two years holiday
+        title: Great MBA Life
         url: blogs/ipsum
       - image: pic05.jpg
         subtitle: Ipsum Dolor Sit Amet
