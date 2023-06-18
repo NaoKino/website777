@@ -7,6 +7,8 @@ description: Lorem Etiam Nullam
 draft: false
 image: pic09.jpg
 keywords: ""
-slug: magna
-title: Magna
+slug: Hectic days in Tokyo
+title: Life in Tokyo
 ---
+
+Discover the bustling metropolis of Tokyo, where tradition meets innovation, and experience a vibrant city that never fails to captivate with its unique blend of ancient charm and modern marvels.
