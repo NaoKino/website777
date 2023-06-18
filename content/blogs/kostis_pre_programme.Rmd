@@ -1,304 +1,897 @@
 ---
-categories:
-- ""
-- ""
-date: "2017-10-31T22:42:51-05:00"
-description: Nullam et orci eu lorem consequat tincidunt vivamus et sagittis magna
-  sed nunc rhoncus condimentum sem. In efficitur ligula tate urna. Maecenas massa
-  sed magna lacinia magna pellentesque lorem ipsum dolor. Nullam et orci eu lorem
-  consequat tincidunt. Vivamus et sagittis tempus.
-draft: false
-image: forex_prices.jpg
-keywords: ""
-slug: aliquam
-title: About me, or pre-programme
+title: "Homework 4: Machine Learning"
+author: "Naoya Kinoshita"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    highlight: zenburn
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    code_folding: show
+  pdf_document:
+    toc: yes
 ---
 
-
-```{r load-libraries, warning=FALSE, message=FALSE, echo=FALSE}
-library(tidyverse)  # Load ggplot2, dplyr, and all the other tidyverse packages
-library(gapminder)  # gapminder dataset
-library(here)
+```{r}
+#| label: load-libraries
+#| echo: false # This option disables the printing of code (only output is displayed).
+#| message: false
+#| warning: false
+options(scipen = 999) #disable scientific notation
+library(tidyverse)
+library(tidymodels)
+library(GGally)
+library(sf)
+library(leaflet)
 library(janitor)
+library(rpart.plot)
+library(here)
+library(scales)
+library(vip)
+library(knitr)
+library(kknn)
 ```
 
-Hi this is Naoya.
+# The Bechdel Test
 
-# Task 2: `gapminder` country comparison
+<https://fivethirtyeight.com/features/the-dollar-and-cents-case-against-hollywoods-exclusion-of-women/>
 
-You have seen the `gapminder` dataset that has data on life expectancy, population, and GDP per capita for 142 countries from 1952 to 2007. To get a glimpse of the dataframe, namely to see the variable names, variable types, etc., we use the `glimpse` function. We also want to have a look at the first 20 rows of data.
+The [Bechdel test](https://bechdeltest.com) is a way to assess how women are depicted in Hollywood movies. In order for a movie to pass the test:
+
+1.  It has to have at least two [named] women in it
+2.  Who talk to each other
+3.  About something besides a man
+
+There is a nice article and analysis you can find here <https://fivethirtyeight.com/features/the-dollar-and-cents-case-against-hollywoods-exclusion-of-women/> We have a sample of 1394 movies and we want to fit a model to predict whether a film passes the test or not.
+
+```{r read_data}
+
+bechdel <- read_csv(here::here("data", "bechdel.csv")) %>% 
+  mutate(test = factor(test)) 
+glimpse(bechdel)
+
+```
+
+How many films fail/pass the test, both as a number and as a %?
+    Answer: 
+    Out of 1394 films, 622 films passed the test while 772 films failed.
+    This means that the pass rate for films is 44.6198%, and the failure rate is 55.3802%.
+
 
 ```{r}
-glimpse(gapminder)
+# Count the number of films that pass or fail the test
+film_counts <- bechdel %>%
+  count(test, name = "count")
 
-head(gapminder, 20) # look at the first 20 rows of the dataframe
+# Calculate the percentage of films that pass or fail the test
+film_percentages <- bechdel %>%
+  count(test, name = "count") %>%
+  mutate(percentage = count / sum(count) * 100)
 
+# Extract the counts and percentages for pass and fail
+pass_count <- film_counts$count[film_counts$test == "Pass"]
+fail_count <- film_counts$count[film_counts$test == "Fail"]
+pass_percentage <- film_percentages$percentage[film_percentages$test == "Pass"]
+fail_percentage <- film_percentages$percentage[film_percentages$test == "Fail"]
+
+# Print the results
+cat("Number of films that pass the test:", pass_count, "\n")
+cat("Number of films that fail the test:", fail_count, "\n")
+cat("Percentage of films that pass the test:", pass_percentage, "%\n")
+cat("Percentage of films that fail the test:", fail_percentage, "%\n")
 ```
 
-Your task is to produce two graphs of how life expectancy has changed over the years for the `country` and the `continent` you come from.
-
-I have created the `country_data` and `continent_data` with the code below.
+## Movie scores
 
 ```{r}
-country_data <- gapminder %>% 
-            filter(country == "Greece") # just choosing Greece, as this is where I come from
-
-continent_data <- gapminder %>% 
-            filter(continent == "Europe")
+ggplot(data = bechdel, aes(
+  x = metascore,
+  y = imdb_rating,
+  colour = test
+)) +
+  geom_point(alpha = .3, size = 3) +
+  scale_colour_manual(values = c("tomato", "olivedrab")) +
+  labs(
+    x = "Metacritic score",
+    y = "IMDB rating",
+    colour = "Bechdel test"
+  ) +
+ theme_light()
 ```
 
-First, create a plot of life expectancy over time for the single country you chose. Map `year` on the x-axis, and `lifeExp` on the y-axis. You should also use `geom_point()` to see the actual data points and `geom_smooth(se = FALSE)` to plot the underlying trendlines. You need to remove the comments **\#** from the lines below for your code to run.
+# Split the data
 
-```{r, lifeExp_one_country}
-# plot1 <- ggplot(data = ??, mapping = aes(x = ??, y = ??))+
-#   geom_??() +
-#   geom_smooth(se = FALSE)+
-#   NULL 
+```{r}
+# **Split the data**
 
-# plot1
+set.seed(123)
+
+data_split <- initial_split(bechdel, # updated data
+                           prop = 0.8, 
+                           strata = test)
+
+bechdel_train <- training(data_split) 
+bechdel_test <- testing(data_split)
 ```
 
-Next we need to add a title. Create a new plot, or extend plot1, using the `labs()` function to add an informative title to the plot.
+Check the counts and % (proportions) of the `test` variable in each set.
+Answer:: Below table shows the counts and % (proportions) of the `test` variable in each set.
 
-```{r, lifeExp_one_country_with_label}
-# plot1<- plot1 +
-#   labs(title = " ",
-#       x = " ",
-#       y = " ") +
-#   NULL
+```{r}
+# Check the counts and proportions in the train set
+train_counts <- bechdel_train %>%
+  count(test, name = "count")
 
+train_proportions <- bechdel_train %>%
+  count(test, name = "count") %>%
+  mutate(proportion = count / sum(count) * 100)
 
-# plot1
+# Check the counts and proportions in the test set
+test_counts <- bechdel_test %>%
+  count(test, name = "count")
+
+test_proportions <- bechdel_test %>%
+  count(test, name = "count") %>%
+  mutate(proportion = count / sum(count) * 100)
+
+# Print the results for the train set
+cat("Train Set:\n")
+cat("Counts:\n")
+kable(train_counts)
+cat("Proportions (%):\n")
+kable(train_proportions)
+
+# Print the results for the test set
+cat("\nTest Set:\n")
+cat("Counts:\n")
+kable(test_counts)
+cat("Proportions (%):\n")
+kable(test_proportions)
 ```
 
-Secondly, produce a plot for all countries in the *continent* you come from. (Hint: map the `country` variable to the colour aesthetic. You also want to map `country` to the `group` aesthetic, so all points for each country are grouped together).
+## Feature exploration
 
-```{r lifeExp_one_continent}
-# ggplot(gapminder, mapping = aes(x =  , y =  , colour= , group =))+
-#   geom_?? + 
-#   geom_smooth(se = FALSE) +
-#   NULL
+## Any outliers?
+  Answer follows::
+  The following is a box-and-whisker plot representation of the Bechdel Test data. This plot shows the distribution of the data when arranged in order of magnitude. As the value axis is oriented upwards, the lower end of the whisker represents the minimum value, while the upper end represents the maximum value. Notably, a few outliers exceeding the third quartile are observed in all datasets.
+
+```{r}
+
+bechdel %>% 
+  select(test, budget_2013, domgross_2013, intgross_2013, imdb_rating, metascore) %>% 
+
+    pivot_longer(cols = 2:6,
+               names_to = "feature",
+               values_to = "value") %>% 
+  ggplot()+
+  aes(x=test, y = value, fill = test)+
+  coord_flip()+
+  geom_boxplot()+
+  facet_wrap(~feature, scales = "free")+
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(x=NULL,y = NULL)
+
 ```
 
-Finally, using the original `gapminder` data, produce a life expectancy over time graph, grouped (or faceted) by continent. We will remove all legends, adding the `theme(legend.position="none")` in the end of our ggplot.
+## Scatterplot - Correlation Matrix
 
-```{r lifeExp_facet_by_continent}
-# ggplot(data = gapminder , mapping = aes(x =  , y =  , colour= ))+
-#   geom_??? + 
-#   geom_smooth(se = FALSE) +
-#   facet_wrap(~continent) +
-#   theme(legend.position="none") + #remove all legends
-#   NULL
+Write a paragraph discussing the output of the following
+Answer follows::
+
+  Based on the generated Scatterplot - Correlation Matrix, we can consider the following relationships for each type of data:
+
+1.Relationship between variables: Each scatterplot shows the relationship between two variables. For example, there is a clear positive correlation between budget_2013 and domgross_2013. This suggests that as the budget of a movie increases, the domestic gross revenue also tends to increase.
+
+2.Results of the Bechdel Test: The color-coded points indicate whether a movie passed the Bechdel Test. For some variables (such as imdb_rating and metascore), there are no clear patterns based on the test results. This suggests that whether a movie passes the Bechdel Test may not have a direct impact on these ratings.
+
+3.Distribution of variables: The histograms on the diagonal line show the distribution of each variable. For instance, imdb_rating shows a distribution skewed to the left, indicating that the IMDB ratings of movies tend to be lower.
+
+4.Impact of test results: In the scatterplot between budget_2013 and domgross_2013, it is shown that movies that passed the Bechdel Test (green points) tend to have a high budget and high domestic gross revenue. This may suggest that movies with more active participation of female characters may have a higher budget and generate higher revenue.
+
+
+```{r, warning=FALSE, message=FALSE}
+bechdel %>% 
+  select(test, budget_2013, domgross_2013, intgross_2013, imdb_rating, metascore)%>% 
+  ggpairs(aes(colour=test), alpha=0.2)+
+  theme_bw()
 ```
 
-Given these trends, what can you say about life expectancy since 1952? Again, don't just say what's happening in the graph. Tell some sort of story and speculate about the differences in the patterns.
+## Categorical variables
 
-> Type your answer after this blockquote.
+Write a paragraph discussing the output of the following
+Answer follows::
 
-# Task 3: Brexit vote analysis
+I have aggregated the results of the Bechdel Test according to the genre and rating of the movies, and calculated the proportion of movies that passed the test within each category. The tables and visualizations below present the analysis by genre and rating. Based on these, it is possible to consider the following two points:
 
-We will have a look at the results of the 2016 Brexit vote in the UK. First we read the data using `read_csv()` and have a quick glimpse at the data
+Analysis by Genre: When looking at the results by genre, approximately 70% of action movies fail the Bechdel Test, while about 30% pass. On the other hand, in comedy movies, about 43% fail the test, and approximately 57% pass. Furthermore, 100% of documentaries fail the test. This suggests that the likelihood of a movie passing the Bechdel Test varies depending on its genre.
 
-```{r load_brexit_data, warning=FALSE, message=FALSE}
-brexit_results <- read_csv(here::here("data","brexit_results.csv"))
+Analysis by Rating: When looking at the results by rating, about 62% of movies rated 'G' fail the Bechdel Test, while approximately 38% pass. Conversely, for movies rated 'R', about 57% fail the test, and around 43% pass. This indicates that the likelihood of a movie passing the Bechdel Test can also vary depending on its rating.
 
-
-glimpse(brexit_results)
-```
-
-The data comes from [Elliott Morris](https://www.thecrosstab.com/), who cleaned it and made it available through his [DataCamp class on analysing election and polling data in R](https://www.datacamp.com/courses/analyzing-election-and-polling-data-in-r).
-
-Our main outcome variable (or y) is `leave_share`, which is the percent of votes cast in favour of Brexit, or leaving the EU. Each row is a UK [parliament constituency](https://en.wikipedia.org/wiki/United_Kingdom_Parliament_constituencies).
-
-To get a sense of the spread, or distribution, of the data, we can plot a histogram, a density plot, and the empirical cumulative distribution function of the leave % in all constituencies.
-
-```{r brexit_histogram, warning=FALSE, message=FALSE}
-
-# histogram
-ggplot(brexit_results, aes(x = leave_share)) +
-  geom_histogram(binwidth = 2.5)
-
-# density plot-- think smoothed histogram
-ggplot(brexit_results, aes(x = leave_share)) +
-  geom_density()
-
-
-# The empirical cumulative distribution function (ECDF) 
-ggplot(brexit_results, aes(x = leave_share)) +
-  stat_ecdf(geom = "step", pad = FALSE) +
-  scale_y_continuous(labels = scales::percent)
-```
-
-One common explanation for the Brexit outcome was fear of immigration and opposition to the EU's more open border policy. We can check the relationship (or correlation) between the proportion of native born residents (`born_in_uk`) in a constituency and its `leave_share`. To do this, let us get the correlation between the two variables
-
-```{r brexit_immigration_correlation}
-brexit_results %>% 
-  select(leave_share, born_in_uk) %>% 
-  cor()
-```
-
-The correlation is almost 0.5, which shows that the two variables are positively correlated.
-
-We can also create a scatterplot between these two variables using `geom_point`. We also add the best fit line, using `geom_smooth(method = "lm")`.
-
-```{r brexit_immigration_plot}
-ggplot(brexit_results, aes(x = born_in_uk, y = leave_share)) +
-  geom_point(alpha=0.3) +
+```{r}
+bechdel %>% 
+  group_by(genre, test) %>%
+  summarise(n = n()) %>% 
+  mutate(prop = n/sum(n))
   
-  # add a smoothing line, and use method="lm" to get the best straight-line
-  geom_smooth(method = "lm") + 
-  
-  # use a white background and frame the plot with a black box
+ 
+bechdel %>% 
+  group_by(rated, test) %>%
+  summarise(n = n()) %>% 
+  mutate(prop = n/sum(n))
+```
+## Analysing data by graph
+
+```{r}
+
+bechdel %>% 
+  group_by(genre, test) %>%
+  summarise(n = n()) %>% 
+  mutate(prop = n/sum(n)) %>%
+  ggplot(aes(x = genre, y = prop, fill = test)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.5) +
+  labs(x = "Genre", y = "Proportion", fill = "Bechdel Test Result") +
   theme_bw() +
-  NULL
-```
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-You have the code for the plots, I would like you to revisit all of them and use the `labs()` function to add an informative title, subtitle, and axes titles to all plots.
-
-What can you say about the relationship shown above? Again, don't just say what's happening in the graph. Tell some sort of story and speculate about the differences in the patterns.
-
-> Type your answer after, and outside, this blockquote.
-
-# Task 4: Animal rescue incidents attended by the London Fire Brigade
-
-[The London Fire Brigade](https://data.london.gov.uk/dataset/animal-rescue-incidents-attended-by-lfb) attends a range of non-fire incidents (which we call 'special services'). These 'special services' include assistance to animals that may be trapped or in distress. The data is provided from January 2009 and is updated monthly. A range of information is supplied for each incident including some location information (postcode, borough, ward), as well as the data/time of the incidents. We do not routinely record data about animal deaths or injuries.
-
-Please note that any cost included is a notional cost calculated based on the length of time rounded up to the nearest hour spent by Pump, Aerial and FRU appliances at the incident and charged at the current Brigade hourly rate.
-
-```{r load_animal_rescue_data, warning=FALSE, message=FALSE}
-
-url <- "https://data.london.gov.uk/download/animal-rescue-incidents-attended-by-lfb/8a7d91c2-9aec-4bde-937a-3998f4717cd8/Animal%20Rescue%20incidents%20attended%20by%20LFB%20from%20Jan%202009.csv"
-
-animal_rescue <- read_csv(url,
-                          locale = locale(encoding = "CP1252")) %>% 
-  janitor::clean_names()
-
-
-glimpse(animal_rescue)
-```
-One of the more useful things one can do with any data set is quick counts, namely to see how many observations fall within one category. For instance, if we wanted to count the number of incidents by year, we would either use `group_by()... summarise()` or, simply [`count()`](https://dplyr.tidyverse.org/reference/count.html)
-
-```{r, instances_by_calendar_year}
-
-animal_rescue %>% 
-  dplyr::group_by(cal_year) %>% 
-  summarise(count=n())
-
-animal_rescue %>% 
-  count(cal_year, name="count")
-
-```
-
-Let us try to see how many incidents we have by animal group. Again, we can do this either using group_by() and summarise(), or by using count()
-
-```{r, animal_group_percentages}
-animal_rescue %>% 
-  group_by(animal_group_parent) %>% 
-  
-  #group_by and summarise will produce a new column with the count in each animal group
-  summarise(count = n()) %>% 
-  
-  # mutate adds a new column; here we calculate the percentage
-  mutate(percent = round(100*count/sum(count),2)) %>% 
-  
-  # arrange() sorts the data by percent. Since the default sorting is min to max and we would like to see it sorted
-  # in descending order (max to min), we use arrange(desc()) 
-  arrange(desc(percent))
-
-
-animal_rescue %>% 
-  
-  #count does the same thing as group_by and summarise
-  # name = "count" will call the column with the counts "count" ( exciting, I know)
-  # and 'sort=TRUE' will sort them from max to min
-  count(animal_group_parent, name="count", sort=TRUE) %>% 
-  mutate(percent = round(100*count/sum(count),2))
-
-
-```
-
-Do you see anything strange in these tables? 
-
-Finally, let us have a loot at the notional cost for rescuing each of these animals. As the LFB says,
-
-> Please note that any cost included is a notional cost calculated based on the length of time rounded up to the nearest hour spent by Pump, Aerial and FRU appliances at the incident and charged at the current Brigade hourly rate.
-
-There is two things we will do:
-
-1. Calculate the mean and median `incident_notional_cost` for each `animal_group_parent`
-2. Plot a boxplot to get a feel for the distribution of `incident_notional_cost` by `animal_group_parent`.
-
-
-Before we go on, however, we need to fix `incident_notional_cost` as it is stored as a `chr`, or character, rather than a number.
-
-```{r, parse_incident_cost,message=FALSE, warning=FALSE}
-
-# what type is variable incident_notional_cost from dataframe `animal_rescue`
-typeof(animal_rescue$incident_notional_cost)
-
-# readr::parse_number() will convert any numerical values stored as characters into numbers
-animal_rescue <- animal_rescue %>% 
-
-  # we use mutate() to use the parse_number() function and overwrite the same variable
-  mutate(incident_notional_cost = parse_number(incident_notional_cost))
-
-# incident_notional_cost from dataframe `animal_rescue` is now 'double' or numeric
-typeof(animal_rescue$incident_notional_cost)
-
-```
-
-Now that incident_notional_cost is numeric, let us quickly calculate summary statistics for each animal group. 
-
-
-```{r, stats_on_incident_cost,message=FALSE, warning=FALSE}
-
-animal_rescue %>% 
-  
-  # group by animal_group_parent
-  group_by(animal_group_parent) %>% 
-  
-  # filter resulting data, so each group has at least 6 observations
-  filter(n()>6) %>% 
-  
-  # summarise() will collapse all values into 3 values: the mean, median, and count  
-  # we use na.rm=TRUE to make sure we remove any NAs, or cases where we do not have the incident cos
-  summarise(mean_incident_cost = mean (incident_notional_cost, na.rm=TRUE),
-            median_incident_cost = median (incident_notional_cost, na.rm=TRUE),
-            sd_incident_cost = sd (incident_notional_cost, na.rm=TRUE),
-            min_incident_cost = min (incident_notional_cost, na.rm=TRUE),
-            max_incident_cost = max (incident_notional_cost, na.rm=TRUE),
-            count = n()) %>% 
-  
-  # sort the resulting data in descending order. You choose whether to sort by count or mean cost.
-  arrange(desc(median_incident_cost))
-
-```
-
-
-
-Compare the mean and the median for each animal group. waht do you think this is telling us?
-Anything else that stands out? Any outliers?
-
-Finally, let us plot a few plots that show the distribution of incident_cost for each animal group.
-
-```{r, plots_on_incident_cost_by_animal_group,message=FALSE, warning=FALSE}
-
-# base_plot
-base_plot <- animal_rescue %>% 
-  group_by(animal_group_parent) %>% 
-  filter(n()>6) %>% 
-  ggplot(aes(x=incident_notional_cost))+
-  facet_wrap(~animal_group_parent, scales = "free")+
+bechdel %>% 
+  group_by(rated, test) %>%
+  summarise(n = n()) %>% 
+  mutate(prop = n/sum(n)) %>%
+  ggplot(aes(x = rated, y = prop, fill = test)) +
+  geom_col(position = "dodge") +
+  labs(x = "Rated", y = "Proportion", fill = "Bechdel Test Result") +
   theme_bw()
 
-base_plot + geom_histogram()
-base_plot + geom_density()
-base_plot + geom_boxplot()
-base_plot + stat_ecdf(geom = "step", pad = FALSE) +
-  scale_y_continuous(labels = scales::percent)
 
+```
+
+
+# Train first models. `test ~ metascore + imdb_rating`
+
+```{r}
+lr_mod <- logistic_reg() %>% 
+  set_engine(engine = "glm") %>% 
+  set_mode("classification")
+
+lr_mod
+
+
+tree_mod <- decision_tree() %>% 
+  set_engine(engine = "C5.0") %>% 
+  set_mode("classification")
+
+tree_mod 
+
+```
+
+```{r}
+
+
+lr_fit <- lr_mod %>% # parsnip model
+  fit(test ~ metascore + imdb_rating, # a formula
+    data = bechdel_train # dataframe
+  )
+
+tree_fit <- tree_mod %>% # parsnip model
+  fit(test ~ metascore + imdb_rating, # a formula
+    data = bechdel_train # dataframe
+  )
+```
+
+## Logistic regression
+
+```{r}
+
+lr_fit %>%
+  broom::tidy()
+
+lr_preds <- lr_fit %>%
+  augment(new_data = bechdel_train) %>%
+  mutate(.pred_match = if_else(test == .pred_class, 1, 0))
+
+
+# Extract model coefficients
+lr_coefs <- lr_fit %>%
+  tidy()
+
+# Plot coefficient estimates
+ggplot(lr_coefs, aes(x = term, y = estimate, fill = term)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Variable", y = "Coefficient Estimate") +
+  ggtitle("Logistic Regression Coefficients")
+```
+
+```{r}
+# Logistic regression model
+lr_fit <- glm(test ~ budget_2013 + domgross_2013 + metascore, data = bechdel_train, family = binomial)
+
+# Extract model coefficients
+lr_coefs <- lr_fit %>%
+  tidy()
+
+# Plot coefficient estimates
+ggplot(lr_coefs, aes(x = term, y = estimate)) +
+  geom_point(size = 3) +
+  labs(x = "Variable", y = "Coefficient Estimate") +
+  ggtitle("Logistic Regression Coefficients")
+
+```
+
+### Confusion matrix
+
+```{r}
+
+lr_preds %>% 
+  conf_mat(truth = test, estimate = .pred_class) %>% 
+  autoplot(type = "heatmap")
+
+```
+
+
+## Decision Tree
+
+```{r}
+tree_preds <- tree_fit %>%
+  augment(new_data = bechdel) %>%
+  mutate(.pred_match = if_else(test == .pred_class, 1, 0)) 
 
 
 ```
 
-Which of these four graphs do you think best communicates the variability of the `incident_notional_cost` values? Also, can you please tell some sort of story (which animals are more expensive to rescue than others, the spread of values) and speculate about the differences in the patterns.
+```{r}
+tree_preds %>% 
+  conf_mat(truth = test, estimate = .pred_class) %>% 
+  autoplot(type = "heatmap")
+```
+
+## Draw the decision tree
+
+```{r}
+draw_tree <- 
+    rpart::rpart(
+        test ~ metascore + imdb_rating,
+        data = bechdel_train, # uses data that contains both birth weight and `low`
+        control = rpart::rpart.control(maxdepth = 5, cp = 0, minsplit = 10)
+    ) %>% 
+    partykit::as.party()
+plot(draw_tree)
+
+```
+
+# Cross Validation
+
+Run the code below. What does it return?
+
+```{r}
+set.seed(123)
+bechdel_folds <- vfold_cv(data = bechdel_train, 
+                          v = 10, 
+                          strata = test)
+bechdel_folds
+```
+
+## `fit_resamples()`
+
+Trains and tests a resampled model.
+
+```{r}
+lr_fit <- lr_mod %>%
+  fit_resamples(
+    test ~ metascore + imdb_rating,
+    resamples = bechdel_folds
+  )
+
+
+tree_fit <- tree_mod %>%
+  fit_resamples(
+    test ~ metascore + imdb_rating,
+    resamples = bechdel_folds
+  )
+```
+
+## `collect_metrics()`
+
+Unnest the metrics column from a tidymodels `fit_resamples()`
+
+```{r}
+
+collect_metrics(lr_fit)
+collect_metrics(tree_fit)
+
+
+```
+
+```{r}
+tree_preds <- tree_mod %>% 
+  fit_resamples(
+    test ~ metascore + imdb_rating, 
+    resamples = bechdel_folds,
+    control = control_resamples(save_pred = TRUE) #<<
+  )
+
+# What does the data for ROC look like?
+tree_preds %>% 
+  collect_predictions() %>% 
+  roc_curve(truth = test, .pred_Fail)  
+
+# Draw the ROC
+tree_preds %>% 
+  collect_predictions() %>% 
+  roc_curve(truth = test, .pred_Fail) %>% 
+  autoplot()
+
+```
+
+# Build a better training set with `recipes`
+
+## Preprocessing options
+
+-   Encode categorical predictors
+-   Center and scale variables
+-   Handle class imbalance
+-   Impute missing data
+-   Perform dimensionality reduction
+-   ... ...
+
+## To build a recipe
+
+1.  Start the `recipe()`
+2.  Define the variables involved
+3.  Describe **prep**rocessing [step-by-step]
+
+## Collapse Some Categorical Levels
+
+Do we have any `genre` with few observations? Assign genres that have less than 3% to a new category 'Other'
+
+```{r}
+#| echo = FALSE
+bechdel %>% 
+  count(genre) %>% 
+  mutate(genre = fct_reorder(genre, n)) %>% 
+  ggplot(aes(x = genre, 
+             y = n)) +
+  geom_col(alpha = .8) +
+  coord_flip() +
+  labs(x = NULL) +
+  geom_hline(yintercept = (nrow(bechdel_train)*.03), lty = 3)+
+  theme_light()
+```
+
+```{r}
+movie_rec <-
+  recipe(test ~ .,
+         data = bechdel_train) %>%
+  
+  # Genres with less than 5% will be in a catewgory 'Other'
+    step_other(genre, threshold = .03) 
+```
+
+## Before recipe
+
+```{r}
+#| echo = FALSE
+bechdel_train %>% 
+  count(genre, sort = TRUE)
+```
+
+## After recipe
+
+```{r}
+movie_rec %>% 
+  prep() %>% 
+  bake(new_data = bechdel_train) %>% 
+  count(genre, sort = TRUE)
+```
+
+## `step_dummy()`
+
+Converts nominal data into numeric dummy variables
+
+```{r}
+#| results = "hide"
+movie_rec <- recipe(test ~ ., data = bechdel) %>%
+  step_other(genre, threshold = .03) %>% 
+  step_dummy(all_nominal_predictors()) 
+
+movie_rec 
+```
+
+## Let's think about the modelling
+
+What if there were no films with `rated` NC-17 in the training data?
+
+-   Will the model have a coefficient for `rated` NC-17?
+    Answer::
+    No, if there are no films with rated NC-17 in the training data, the model will not have a coefficient for rated NC-17. This is because the model can only learn from the data it is given. If a certain category (in this case, rated NC-17) is not present in the training data, the model will not be able to learn anything about it and therefore will not have a coefficient for it.
+
+-   What will happen if the test data includes a film with `rated` NC-17?
+    Answer::
+    If the test data includes a film with rated NC-17, the model might not be able to make accurate predictions for that film. Since the model was not trained on any data with rated NC-17, it has no knowledge of how that category might affect the outcome. Depending on the implementation, the model might either ignore the rated NC-17 category, treat it as a missing value, or throw an error.
+
+## `step_novel()`
+
+Adds a catch-all level to a factor for any new values not encountered in model training, which lets R intelligently predict new levels in the test set.
+
+```{r}
+
+movie_rec <- recipe(test ~ ., data = bechdel) %>%
+  step_other(genre, threshold = .03) %>% 
+  step_novel(all_nominal_predictors) %>% # Use *before* `step_dummy()` so new level is dummified
+  step_dummy(all_nominal_predictors()) 
+
+```
+
+## `step_zv()`
+
+Intelligently handles zero variance variables (variables that contain only a single value)
+
+```{r}
+movie_rec <- recipe(test ~ ., data = bechdel) %>%
+  step_other(genre, threshold = .03) %>% 
+  step_novel(all_nominal(), -all_outcomes()) %>% # Use *before* `step_dummy()` so new level is dummified
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_zv(all_numeric(), -all_outcomes()) 
+  
+```
+
+## `step_normalize()`
+
+Centers then scales numeric variable (mean = 0, sd = 1)
+
+```{r}
+movie_rec <- recipe(test ~ ., data = bechdel) %>%
+  step_other(genre, threshold = .03) %>% 
+  step_novel(all_nominal(), -all_outcomes()) %>% # Use *before* `step_dummy()` so new level is dummified
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_zv(all_numeric(), -all_outcomes())  %>% 
+  step_normalize(all_numeric()) 
+
+```
+
+## `step_corr()`
+
+Removes highly correlated variables
+
+```{r}
+movie_rec <- recipe(test ~ ., data = bechdel) %>%
+  step_other(genre, threshold = .03) %>% 
+  step_novel(all_nominal(), -all_outcomes()) %>% # Use *before* `step_dummy()` so new level is dummified
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_zv(all_numeric(), -all_outcomes())  %>% 
+  step_normalize(all_numeric()) 
+  
+# step_corr(all_predictors(), threshold = 0.75, method = "spearman") 
+
+
+
+movie_rec
+```
+
+# Define different models to fit
+
+```{r}
+## Model Building
+
+# 1. Pick a `model type`
+# 2. set the `engine`
+# 3. Set the `mode`: regression or classification
+
+# Logistic regression
+log_spec <-  logistic_reg() %>%  # model type
+  set_engine(engine = "glm") %>%  # model engine
+  set_mode("classification") # model mode
+
+# Show your model specification
+log_spec
+
+# Decision Tree
+tree_spec <- decision_tree() %>%
+  set_engine(engine = "C5.0") %>%
+  set_mode("classification")
+
+tree_spec
+
+# Random Forest
+library(ranger)
+
+rf_spec <- 
+  rand_forest() %>% 
+  set_engine("ranger", importance = "impurity") %>% 
+  set_mode("classification")
+
+
+# Boosted tree (XGBoost)
+library(xgboost)
+
+xgb_spec <- 
+  boost_tree() %>% 
+  set_engine("xgboost") %>% 
+  set_mode("classification") 
+
+# K-nearest neighbour (k-NN)
+knn_spec <- 
+  nearest_neighbor(neighbors = 4) %>% # we can adjust the number of neighbors 
+  set_engine("kknn") %>% 
+  set_mode("classification") 
+```
+
+# Bundle recipe and model with `workflows`
+
+```{r}
+log_wflow <- # new workflow object
+ workflow() %>% # use workflow function
+ add_recipe(movie_rec) %>%   # use the new recipe
+ add_model(log_spec)   # add your model spec
+
+# show object
+log_wflow
+
+
+## A few more workflows
+
+tree_wflow <-
+ workflow() %>%
+ add_recipe(movie_rec) %>% 
+ add_model(tree_spec) 
+
+rf_wflow <-
+ workflow() %>%
+ add_recipe(movie_rec) %>% 
+ add_model(rf_spec) 
+
+xgb_wflow <-
+ workflow() %>%
+ add_recipe(movie_rec) %>% 
+ add_model(xgb_spec)
+
+knn_wflow <-
+ workflow() %>%
+ add_recipe(movie_rec) %>% 
+ add_model(knn_spec)
+
+```
+
+HEADS UP
+
+1.  How many models have you specified?
+    Answer::
+    I have specified five different models. These are Logistic Regression, Decision Tree, Random Forest, Boosted Tree (XGBoost), and K-Nearest Neighbors (k-NN).
+
+2.  What's the difference between a model specification and a workflow?
+    Answer::
+    A model specification is a description of the type of model I want to fit, including the model type, engine, and mode. It does not contain any information about the data you will use to fit the model.
+
+A workflow, on the other hand, is a bundle that contains both a model specification and a recipe (or a formula). The recipe describes the preprocessing steps you want to apply to the data before fitting the model. By bundling the model specification and the recipe together in a workflow, I can ensure that the same preprocessing steps are applied consistently when fitting the model and making predictions.
+
+3.  Do you need to add a formula (e.g., `test ~ .`) if you have a recipe?
+    Answer::
+    No, I do not need to add a formula if you have a recipe. The recipe in tidymodels serves a similar purpose to the formula in traditional R modeling functions, but it is more flexible and powerful. The recipe specifies what preprocessing steps to apply to the data, and how the predictors and outcome are related. If you have specified a recipe, you do not need to also specify a formula.
+# Model Comparison
+
+You now have all your models. Adapt the code from slides `code-from-slides-CA-housing.R`, line 400 onwards to assess which model gives you the best classification.
+
+```{r}
+## Model Evaluation
+
+## Logistic regression results{.smaller}
+
+log_res <- log_wflow %>% 
+  fit_resamples(
+    resamples = bechdel_folds, 
+    metrics = metric_set(
+      recall, precision, f_meas, accuracy,
+      kap, roc_auc, sens, spec),
+    control = control_resamples(save_pred = TRUE)) 
+
+# Show average performance over all folds (note that we use log_res):
+log_res %>%  collect_metrics(summarize = TRUE)
+
+# Show performance for every single fold:
+log_res %>%  collect_metrics(summarize = FALSE)
+
+
+## `collect_predictions()` and get confusion matrix{.smaller}
+
+log_pred <- log_res %>% collect_predictions()
+
+log_pred %>%  conf_mat(test, .pred_class) 
+
+log_pred %>% 
+  conf_mat(test, .pred_class) %>% 
+  autoplot(type = "mosaic") +
+  geom_label(aes(
+      x = (xmax + xmin) / 2, 
+      y = (ymax + ymin) / 2, 
+      label = c("TP", "FN", "FP", "TN")))
+
+
+log_pred %>% 
+  conf_mat(test, .pred_class) %>% 
+  autoplot(type = "heatmap")
+
+glimpse(log_pred)
+
+## ROC Curve
+
+log_pred %>% 
+  group_by(id) %>% # id contains our folds
+  roc_curve(test, .pred_Pass) %>% 
+  autoplot()
+```
+
+```{r}
+## Decision Tree results
+
+tree_res <-
+  tree_wflow %>% 
+  fit_resamples(
+    resamples = bechdel_folds, 
+    metrics = metric_set(
+      recall, precision, f_meas, 
+      accuracy, kap,
+      roc_auc, sens, spec),
+    control = control_resamples(save_pred = TRUE)
+    ) 
+
+tree_res %>%  collect_metrics(summarize = TRUE)
+```
+
+```{r}
+## Boosted tree - XGBoost
+
+xgb_res <- 
+  xgb_wflow %>% 
+  fit_resamples(
+    resamples = bechdel_folds, 
+    metrics = metric_set(
+      recall, precision, f_meas, 
+      accuracy, kap,
+      roc_auc, sens, spec),
+    control = control_resamples(save_pred = TRUE)
+    ) 
+
+xgb_res %>% collect_metrics(summarize = TRUE)
+
+```
+
+```{r}
+
+## K-nearest neighbour
+
+knn_res <- knn_wflow %>% 
+  fit_resamples(
+    resamples = bechdel_folds, 
+    metrics = metric_set(
+      recall, precision, f_meas, 
+      accuracy, kap,
+      roc_auc, sens, spec),
+    control = control_resamples(save_pred = TRUE)
+    ) 
+
+knn_res %>% collect_metrics(summarize = TRUE)
+
+```
+
+## Model Comparison
+
+```{r}
+
+## Model Comparison
+
+log_metrics <- 
+  log_res %>% 
+  collect_metrics(summarise = TRUE) %>%
+  # add the name of the model to every row
+  mutate(model = "Logistic Regression") 
+
+tree_metrics <- 
+  tree_res %>% 
+  collect_metrics(summarise = TRUE) %>%
+  mutate(model = "Decision Tree")
+
+xgb_metrics <- 
+  xgb_res %>% 
+  collect_metrics(summarise = TRUE) %>%
+  mutate(model = "XGBoost")
+
+knn_metrics <- 
+  knn_res %>% 
+  collect_metrics(summarise = TRUE) %>%
+  mutate(model = "Knn")
+
+# create dataframe with all models
+model_compare <- bind_rows(log_metrics,
+                           tree_metrics,
+                           xgb_metrics,
+                           knn_metrics) 
+
+#Pivot wider to create barplot
+  model_comp <- model_compare %>% 
+  select(model, .metric, mean, std_err) %>% 
+  pivot_wider(names_from = .metric, values_from = c(mean, std_err)) 
+
+# show mean are under the curve (ROC-AUC) for every model
+model_comp %>% 
+  arrange(mean_roc_auc) %>% 
+  mutate(model = fct_reorder(model, mean_roc_auc)) %>% # order results
+  ggplot(aes(model, mean_roc_auc, fill=model)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_brewer(palette = "Blues") +
+   geom_text(
+     size = 3,
+     aes(label = round(mean_roc_auc, 2), 
+         y = mean_roc_auc + 0.08),
+     vjust = 1
+  )+
+  theme_light()+
+  theme(legend.position = "none")+
+  labs(y = NULL)
+
+## `last_fit()` on test set
+
+# - `last_fit()`  fits a model to the whole training data and evaluates it on the test set. 
+# - provide the workflow object of the best model as well as the data split object (not the training data). 
+ 
+last_fit_xgb <- last_fit(xgb_wflow, 
+                        split = data_split,
+                        metrics = metric_set(
+                          accuracy, f_meas, kap, precision,
+                          recall, roc_auc, sens, spec))
+
+last_fit_xgb %>% collect_metrics(summarize = TRUE)
+
+#Compare to training
+xgb_res %>% collect_metrics(summarize = TRUE)
+
+
+## Variable importance using `{vip}` package
+
+library(vip)
+
+last_fit_xgb %>% 
+  pluck(".workflow", 1) %>%   
+  pull_workflow_fit() %>% 
+  vip(num_features = 10) +
+  theme_light()
+
+
+## Final Confusion Matrix
+
+last_fit_xgb %>%
+  collect_predictions() %>% 
+  conf_mat(test, .pred_class) %>% 
+  autoplot(type = "heatmap")
+
+
+## Final ROC curve
+last_fit_xgb %>% 
+  collect_predictions() %>% 
+  roc_curve(test, .pred_Pass) %>% 
+  autoplot()
+```
+
+# Deliverables
+
+There is a lot of explanatory text, comments, etc. You do not need these, so delete them and produce a stand-alone document that you could share with someone. Knit the edited and completed R Markdown (Rmd) file as a Word or HTML document (use the "Knit" button at the top of the script editor window) and upload it to Canvas. You must be commiting and pushing your changes to your own Github repo as you go along.
+
+# Details
+
+-   Who did you collaborate with: ChatGPT
+-   Approximately how much time did you spend on this problem set: 3-4hr
+-   What, if anything, gave you the most trouble: No major problems arose in performing the task. Data analysis itself was possible, but it was felt that an understanding of statistics and proper data understanding was important in interpreting the data.
+
+**Please seek out help when you need it,** and remember the [15-minute rule](https://dsb2023.netlify.app/syllabus/#the-15-minute-rule){target="_blank"}. You know enough R (and have enough examples of code from class and your readings) to be able to do this. If you get stuck, ask for help from others, post a question on Slack-- and remember that I am here to help too!
+
+> As a true test to yourself, do you understand the code you submitted and are you able to explain it to someone else?
+
+# Rubric
+
+13/13: Problem set is 100% completed. Every question was attempted and answered, and most answers are correct. Code is well-documented (both self-documented and with additional comments as necessary). Used tidyverse, instead of base R. Graphs and tables are properly labelled. Analysis is clear and easy to follow, either because graphs are labeled clearly or you've written additional text to describe how you interpret the output. Multiple Github commits. Work is exceptional. I will not assign these often.
+
+8/13: Problem set is 60--80% complete and most answers are correct. This is the expected level of performance. Solid effort. Hits all the elements. No clear mistakes. Easy to follow (both the code and the output). A few Github commits.
+
+5/13: Problem set is less than 60% complete and/or most answers are incorrect. This indicates that you need to improve next time. I will hopefully not assign these often. Displays minimal effort. Doesn't complete all components. Code is poorly written and not documented. Uses the same type of plot for each graph, or doesn't use plots appropriate for the variables being analyzed. No Github commits.
